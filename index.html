@@ -255,125 +255,6 @@
             showModal(content);
         }
 
-        function showTradeModal() { /* ... existing code ... */ }
-        function showMapModal() { /* ... existing code ... */ }
-        function showDistrictOpportunities(districtName) { /* ... existing code ... */ }
-        function showAssetsModal() { /* ... existing code ... */ }
-        function showBusinessManagementModal(businessIndex) { /* ... existing code ... */ }
-        
-        // --- GAME LOGIC FUNCTIONS ---
-        function spendEnergy(amount) { /* ... existing code ... */ }
-        function handleHustle(type) { /* ... existing code ... */ }
-        function handleRest() { /* ... existing code ... */ }
-        function handleStudy() { /* ... existing code ... */ }
-        function calculatePrice(good) { /* ... existing code ... */ }
-        function tradeGood(goodName, action, quantity) { /* ... existing code ... */ }
-        function buyAsset(type, assetName) { /* ... existing code ... */ }
-        function upgradeBusiness(index) { /* ... existing code ... */ }
-        function hireStaff(index) { /* ... existing code ... */ }
-        function calculateBusinessIncome(business) { /* ... existing code ... */ }
-
-        function endDay() {
-            logMessage("A new day dawns.", 'event');
-            player.day += 1;
-            player.energy = player.maxEnergy;
-
-            // Player Income
-            let totalIncome = 0;
-            const propertyIncome = player.assets.properties.reduce((sum, p) => sum + p.income, 0);
-            totalIncome += propertyIncome;
-            let businessIncome = 0;
-            player.assets.businesses.forEach(b => {
-                const incomeRange = calculateBusinessIncome(b);
-                businessIncome += Math.floor(Math.random() * (incomeRange[1] - incomeRange[0] + 1)) + incomeRange[0];
-            });
-            totalIncome += businessIncome;
-            if (totalIncome > 0) player.cash += totalIncome;
-            if (propertyIncome > 0) logMessage(`Collected R${propertyIncome.toLocaleString()} from properties.`, 'success');
-            if (businessIncome > 0) logMessage(`Collected R${businessIncome.toLocaleString()} from businesses.`, 'success');
-            
-            // Rival Growth
-            rivals.forEach(rival => {
-                const dailyGrowth = rival.netWorth * (rival.growthFactor - 1);
-                const randomFactor = (Math.random() * rival.netWorth * 0.01) * (Math.random() > 0.5 ? 1 : -1);
-                rival.netWorth += dailyGrowth + randomFactor;
-            });
-
-            // Market Fluctuation
-            goods.forEach(good => {
-                good.demand += Math.floor((Math.random() - 0.5) * 20);
-                good.supply += Math.floor((Math.random() - 0.5) * 10);
-                if (good.demand < 10) good.demand = 10;
-                if (good.supply < 10) good.supply = 10;
-            });
-            
-            triggerRandomEvent();
-            checkMissions();
-            
-            if (getTotalAssets() >= 100000000) { showWinScreen(); }
-
-            updateHUD();
-            saveGame();
-        }
-        
-        function getTotalAssets() {
-            const propertyValue = player.assets.properties.reduce((sum, p) => sum + p.price, 0);
-            const businessValue = player.assets.businesses.reduce((sum, b) => sum + b.price, 0);
-            return player.cash + propertyValue + businessValue;
-        }
-        
-        // --- EVENT & MISSION SYSTEM ---
-        const missions = { /* ... existing code ... */ };
-        function checkMissions() { /* ... existing code ... */ }
-        const randomEvents = [ /* ... existing code ... */ ];
-        function triggerRandomEvent() { /* ... existing logic ... */ }
-        function handleEventChoice(eventIndex, choiceIndex) { /* ... existing logic ... */ }
-        
-        function showWinScreen() { /* ... existing logic ... */ }
-        
-        function restartGame() {
-            localStorage.removeItem('hustleDynastySave');
-            player = JSON.parse(JSON.stringify(initialPlayerState));
-            rivals = JSON.parse(JSON.stringify(initialRivalsState));
-            districts.forEach((d, index) => d.unlocked = index === 0);
-            document.getElementById('log-content').innerHTML = '';
-            logMessage('Welcome to Hustle Dynasty. A new game has begun.', 'event');
-            updateHUD();
-            closeModal();
-        }
-
-        // --- SAVE/LOAD ---
-        function saveGame() {
-            const gameState = { player: player, districts: districts, rivals: rivals };
-            localStorage.setItem('hustleDynastySave', JSON.stringify(gameState));
-        }
-
-        function loadGame() {
-            const savedState = localStorage.getItem('hustleDynastySave');
-            if (savedState) {
-                const gameState = JSON.parse(savedState);
-                player = gameState.player;
-                rivals = gameState.rivals || JSON.parse(JSON.stringify(initialRivalsState));
-                if (!player.missions) player.missions = {};
-                gameState.districts.forEach((savedDist, index) => { districts[index].unlocked = savedDist.unlocked; });
-                logMessage('Saved game loaded. Welcome back!', 'event');
-            } else {
-                logMessage('Welcome to Hustle Dynasty. You start with R500. It\'s time to build your empire.', 'event');
-            }
-        }
-
-
-        // --- INITIALIZE ---
-        window.onload = () => {
-            loadGame();
-            updateHUD();
-            checkMissions();
-        };
-
-        // --- PASTEBIN ---
-        // Functions below this line are unchanged from previous versions but are required for the game to run.
-        // They are collapsed here for brevity.
-        
         function showTradeModal() {
             let goodsHTML = goods.map(good => {
                 const currentPrice = calculatePrice(good);
@@ -524,6 +405,8 @@
             `;
             showModal(content);
         }
+        
+        // --- GAME LOGIC FUNCTIONS ---
         function spendEnergy(amount) {
             if (player.energy >= amount) { player.energy -= amount; updateHUD(); return true; }
             logMessage("Not enough energy!", 'error');
@@ -662,6 +545,57 @@
             multiplier *= staffBonus;
             return [Math.floor(baseData.baseIncome[0] * multiplier), Math.floor(baseData.baseIncome[1] * multiplier)];
         }
+
+        function endDay() {
+            logMessage("A new day dawns.", 'event');
+            player.day += 1;
+            player.energy = player.maxEnergy;
+
+            // Player Income
+            let totalIncome = 0;
+            const propertyIncome = player.assets.properties.reduce((sum, p) => sum + p.income, 0);
+            totalIncome += propertyIncome;
+            let businessIncome = 0;
+            player.assets.businesses.forEach(b => {
+                const incomeRange = calculateBusinessIncome(b);
+                businessIncome += Math.floor(Math.random() * (incomeRange[1] - incomeRange[0] + 1)) + incomeRange[0];
+            });
+            totalIncome += businessIncome;
+            if (totalIncome > 0) player.cash += totalIncome;
+            if (propertyIncome > 0) logMessage(`Collected R${propertyIncome.toLocaleString()} from properties.`, 'success');
+            if (businessIncome > 0) logMessage(`Collected R${businessIncome.toLocaleString()} from businesses.`, 'success');
+            
+            // Rival Growth
+            rivals.forEach(rival => {
+                const dailyGrowth = rival.netWorth * (rival.growthFactor - 1);
+                const randomFactor = (Math.random() * rival.netWorth * 0.01) * (Math.random() > 0.5 ? 1 : -1);
+                rival.netWorth += dailyGrowth + randomFactor;
+            });
+
+            // Market Fluctuation
+            goods.forEach(good => {
+                good.demand += Math.floor((Math.random() - 0.5) * 20);
+                good.supply += Math.floor((Math.random() - 0.5) * 10);
+                if (good.demand < 10) good.demand = 10;
+                if (good.supply < 10) good.supply = 10;
+            });
+            
+            triggerRandomEvent();
+            checkMissions();
+            
+            if (getTotalAssets() >= 100000000) { showWinScreen(); }
+
+            updateHUD();
+            saveGame();
+        }
+        
+        function getTotalAssets() {
+            const propertyValue = player.assets.properties.reduce((sum, p) => sum + p.price, 0);
+            const businessValue = player.assets.businesses.reduce((sum, b) => sum + b.price, 0);
+            return player.cash + propertyValue + businessValue;
+        }
+        
+        // --- EVENT & MISSION SYSTEM ---
         const missions = {
             'cornerStoreKingpin': {
                 stages: {
@@ -703,6 +637,7 @@
         const randomEvents = [ ];
         function triggerRandomEvent() { }
         function handleEventChoice(eventIndex, choiceIndex) { }
+        
         function showWinScreen() { 
             const content = `
                 <h3 class="text-2xl font-bold mb-4 text-center text-green-400">DYNASTY ESTABLISHED!</h3>
@@ -717,6 +652,45 @@
             `;
             showModal(content);
         }
+        
+        function restartGame() {
+            localStorage.removeItem('hustleDynastySave');
+            player = JSON.parse(JSON.stringify(initialPlayerState));
+            rivals = JSON.parse(JSON.stringify(initialRivalsState));
+            districts.forEach((d, index) => d.unlocked = index === 0);
+            document.getElementById('log-content').innerHTML = '';
+            logMessage('Welcome to Hustle Dynasty. A new game has begun.', 'event');
+            updateHUD();
+            closeModal();
+        }
+
+        // --- SAVE/LOAD ---
+        function saveGame() {
+            const gameState = { player: player, districts: districts, rivals: rivals };
+            localStorage.setItem('hustleDynastySave', JSON.stringify(gameState));
+        }
+
+        function loadGame() {
+            const savedState = localStorage.getItem('hustleDynastySave');
+            if (savedState) {
+                const gameState = JSON.parse(savedState);
+                player = gameState.player;
+                rivals = gameState.rivals || JSON.parse(JSON.stringify(initialRivalsState));
+                if (!player.missions) player.missions = {};
+                gameState.districts.forEach((savedDist, index) => { districts[index].unlocked = savedDist.unlocked; });
+                logMessage('Saved game loaded. Welcome back!', 'event');
+            } else {
+                logMessage('Welcome to Hustle Dynasty. You start with R500. It\'s time to build your empire.', 'event');
+            }
+        }
+
+
+        // --- INITIALIZE ---
+        window.onload = () => {
+            loadGame();
+            updateHUD();
+            checkMissions();
+        };
     </script>
 </body>
 </html>
