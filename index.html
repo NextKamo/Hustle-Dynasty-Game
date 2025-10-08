@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hustle Dynasty</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .hud-stat {
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+        .action-button {
+            transition: all 0.2s ease-in-out;
+        }
+        .action-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px S10px rgba(0,0,0,0.4);
+        }
+         .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+        .progress-bar-fill {
+            transition: width 0.5s ease-in-out;
+        }
+        @keyframes fade-in {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fade-in {
+            animation: fade-in 0.3s ease-out forwards;
+        }
+        .mission-alert {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white overflow-hidden h-screen flex items-center justify-center">
+
+    <div id="game-container" class="w-full max-w-md h-full md:h-[800px] md:max-h-[90vh] bg-gray-800 shadow-2xl rounded-lg flex flex-col p-4 relative overflow-hidden border-2 border-indigo-500">
+        
+        <!-- Header / HUD -->
+        <header class="grid grid-cols-2 gap-2 mb-2">
+            <div id="cash-stat" class="hud-stat p-3 rounded-lg col-span-2 text-center">
+                <h2 class="text-3xl font-bold text-green-400">R <span id="cash">500</span></h2>
+            </div>
+            <div id="rep-stat" class="hud-stat p-2 rounded-lg text-center">
+                <p class="text-xs text-gray-400">Reputation</p>
+                <p class="font-semibold text-lg text-blue-400"><span id="reputation">0</span></p>
+            </div>
+            <div id="energy-stat" class="hud-stat p-2 rounded-lg text-center">
+                <p class="text-xs text-gray-400">Energy</p>
+                <p class="font-semibold text-lg text-yellow-400"><span id="energy">100</span> / 100</p>
+            </div>
+             <div id="day-stat" class="hud-stat p-2 rounded-lg text-center col-span-2">
+                <p class="text-xs text-gray-400">Day <span id="day">1</span> - <span id="player-level" class="font-bold text-indigo-400">Street Hustler</span></p>
+            </div>
+        </header>
+        
+        <!-- Latest Message Ticker -->
+        <div id="latest-message" class="text-center text-sm italic text-indigo-300 mb-2 p-2 bg-gray-900/80 rounded-lg h-10 flex items-center justify-center truncate">
+            Welcome to the Hustle...
+        </div>
+
+        <!-- Main Content / Log -->
+        <main id="log-container" class="flex-1 bg-gray-900/80 rounded-lg p-4 overflow-y-auto mb-4 flex flex-col-reverse">
+            <!-- Game messages will appear here -->
+             <div id="log-content">
+                <!-- Initial message injected by script -->
+            </div>
+        </main>
+        
+        <!-- Action Buttons -->
+        <footer class="grid grid-cols-4 gap-2">
+            <button onclick="showActionsModal()" class="action-button bg-indigo-600 p-3 rounded-lg font-bold col-span-4">ACTIONS</button>
+            <button onclick="showMapModal()" class="action-button bg-gray-700 p-3 rounded-lg">Map</button>
+            <button onclick="showAssetsModal()" class="action-button bg-gray-700 p-3 rounded-lg relative">Assets <span id="mission-alert-icon" class="hidden absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-yellow-400 rounded-full mission-alert"></span></button>
+            <button onclick="showLeaderboardModal()" class="action-button bg-gray-700 p-3 rounded-lg">Rankings</button>
+            <button onclick="endDay()" class="action-button bg-red-600 hover:bg-red-700 p-3 rounded-lg">End Day</button>
+        </footer>
+
+        <!-- Modals -->
+        <div id="modal-container" class="absolute inset-0 z-10 hidden">
+        </div>
+
+    </div>
+
+    <script>
+        // --- GAME STATE ---
+        let player = {
+            cash: 500,
+            reputation: 0,
+            energy: 100,
+            maxEnergy: 100,
+            day: 1,
+            level: "Street Hustler",
+            assets: {
+                properties: [],
+                businesses: [],
+            },
+            inventory: [],
+            skills: { haggling: 0 },
+            missions: {}
+        };
+
+        let rivals = [
+            { name: 'Vito "The Shark"', netWorth: 7500, growthFactor: 1.02 },
+            { name: 'Isabella "The Ghost"', netWorth: 25000, growthFactor: 1.01 },
+            { name: 'Marcus "The Bull"', netWorth: 1000, growthFactor: 1.05 },
+        ];
+
+        const initialPlayerState = JSON.parse(JSON.stringify(player));
+        const initialRivalsState = JSON.parse(JSON.stringify(rivals));
+        
+        const levels = {
+            "Street Hustler": 0,
+            "Entrepreneur": 10000,
+            "Tycoon": 1000000,
+            "Dynasty Leader": 50000000,
+        };
+
+        const goods = [
+             { name: "Fake Sneakers", basePrice: 50, supply: 100, demand: 100, volatility: 0.3, type: 'street' },
+             { name: "Stolen Phones", basePrice: 200, supply: 50, demand: 150, volatility: 0.6, type: 'street' },
+             { name: "Gold Watches", basePrice: 1000, supply: 20, demand: 80, volatility: 0.4, type: 'luxury' },
+             { name: "Raw Materials", basePrice: 5000, supply: 200, demand: 200, volatility: 0.1, type: 'industrial'},
+        ];
+
+        const assets = {
+            properties: [
+                { name: 'Slums Shack', district: 'The Slums', price: 1000, income: 10, rep: 1 },
+                { name: 'Suburban House', district: 'Suburbs', price: 50000, income: 250, rep: 10 },
+                { name: 'Industrial Warehouse', district: 'Industrial Zone', price: 250000, income: 1500, rep: 50 },
+                { name: 'Downtown Office', district: 'Downtown', price: 1000000, income: 5000, rep: 200 },
+                { name: 'Heights Mansion', district: 'The Heights', price: 25000000, income: 100000, rep: 1000 },
+            ],
+            businesses: [
+                { name: 'Corner Store', district: 'The Slums', price: 5000, baseIncome: [50, 150], rep: 5, upgrades: [{cost: 2500, multiplier: 1.5}, {cost: 10000, multiplier: 2}] },
+                { name: 'Laundromat', district: 'Suburbs', price: 75000, baseIncome: [400, 900], rep: 20, upgrades: [{cost: 30000, multiplier: 1.5}] },
+            ]
+        };
+        
+        const districts = [
+            { name: 'The Slums', unlocked: true, reputation: 0 },
+            { name: 'Suburbs', unlocked: false, reputation: 50 },
+            { name: 'Industrial Zone', unlocked: false, reputation: 200 },
+            { name: 'Downtown', unlocked: false, reputation: 1000 },
+            { name: 'The Heights', unlocked: false, reputation: 5000 },
+        ];
+
+
+        // --- UI UPDATE FUNCTIONS ---
+        function updateHUD() {
+            document.getElementById('cash').innerText = Math.floor(player.cash).toLocaleString();
+            document.getElementById('reputation').innerText = player.reputation;
+            document.getElementById('energy').innerText = player.energy;
+            document.getElementById('day').innerText = player.day;
+            
+            const totalAssetsValue = getTotalAssets();
+            const currentLevel = Object.keys(levels).reverse().find(level => totalAssetsValue >= levels[level]);
+            if (currentLevel && player.level !== currentLevel) {
+                 player.level = currentLevel;
+                 logMessage(`You've been promoted to ${player.level}!`, 'event');
+            }
+            document.getElementById('player-level').innerText = player.level;
+            
+            // Mission Alert
+            const hasActiveMission = Object.values(player.missions).some(m => m.stage > 0);
+            document.getElementById('mission-alert-icon').classList.toggle('hidden', !hasActiveMission);
+        }
+
+        function logMessage(message, type = 'normal') {
+            const logContent = document.getElementById('log-content');
+            const latestMessageDiv = document.getElementById('latest-message');
+            const p = document.createElement('p');
+            
+            let colorClass = 'text-gray-400';
+            if (type === 'success') colorClass = 'text-green-400';
+            if (type === 'error') colorClass = 'text-red-400';
+            if (type === 'event') colorClass = 'text-indigo-400';
+            if (type === 'mission') colorClass = 'text-yellow-400 font-bold';
+            
+            p.className = `mb-1 ${colorClass}`;
+            p.textContent = `[Day ${player.day}] ${message}`;
+            logContent.prepend(p);
+
+            latestMessageDiv.innerHTML = `<span class="${colorClass}">${message}</span>`;
+        }
+
+        // --- MODAL FUNCTIONS ---
+        function showModal(content) {
+            const modalContainer = document.getElementById('modal-container');
+            modalContainer.innerHTML = `
+                <div class="modal-backdrop absolute inset-0 flex items-center justify-center p-4">
+                    <div class="bg-gray-800 border border-indigo-500 rounded-lg shadow-xl p-6 w-full max-w-md animate-fade-in">
+                        ${content}
+                    </div>
+                </div>
+            `;
+            modalContainer.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('modal-container').classList.add('hidden');
+        }
+
+        function showActionsModal() {
+            const studyCost = 100 + (player.skills.haggling * 50);
+            const content = `
+                <h3 class="text-xl font-bold mb-4 text-center">Take Action</h3>
+                <div class="grid grid-cols-1 gap-2">
+                    <button onclick="handleHustle('low')" class="action-button bg-green-600 p-3 rounded-lg">Low-Risk Hustle (-10 Energy)</button>
+                    <button onclick="handleHustle('high')" class="action-button bg-yellow-600 p-3 rounded-lg">High-Risk Hustle (-25 Energy)</button>
+                    <button onclick="showTradeModal()" class="action-button bg-blue-600 p-3 rounded-lg">Trade Goods</button>
+                    <button onclick="handleStudy()" class="action-button bg-purple-600 p-3 rounded-lg">Study (-20 Energy, R${studyCost})</button>
+                    <button onclick="handleRest()" class="action-button bg-gray-600 p-3 rounded-lg">Rest (+50 Energy)</button>
+                </div>
+                <button onclick="closeModal()" class="mt-4 w-full bg-red-600 p-2 rounded-lg">Close</button>
+            `;
+            showModal(content);
+        }
+        
+        function showLeaderboardModal() {
+            const allContenders = [
+                { name: 'You', netWorth: getTotalAssets() },
+                ...rivals
+            ];
+            allContenders.sort((a, b) => b.netWorth - a.netWorth);
+
+            const leaderboardHTML = allContenders.map((c, index) => {
+                const isPlayer = c.name === 'You';
+                const rowClass = isPlayer ? 'bg-indigo-600' : 'bg-gray-700';
+                return `<div class="${rowClass} p-3 rounded-lg flex justify-between items-center">
+                            <span class="font-bold">${index + 1}. ${c.name}</span>
+                            <span class="text-green-400">R ${Math.floor(c.netWorth).toLocaleString()}</span>
+                        </div>`
+            }).join('');
+
+            const content = `
+                <h3 class="text-xl font-bold mb-4 text-center">City Rankings</h3>
+                <div class="space-y-2">
+                    ${leaderboardHTML}
+                </div>
+                <button onclick="closeModal()" class="mt-4 w-full bg-red-600 p-2 rounded-lg">Close</button>
+            `;
+            showModal(content);
+        }
+
+        function showTradeModal() { /* ... existing code ... */ }
+        function showMapModal() { /* ... existing code ... */ }
+        function showDistrictOpportunities(districtName) { /* ... existing code ... */ }
+        function showAssetsModal() { /* ... existing code ... */ }
+        function showBusinessManagementModal(businessIndex) { /* ... existing code ... */ }
+        
+        // --- GAME LOGIC FUNCTIONS ---
+        function spendEnergy(amount) { /* ... existing code ... */ }
+        function handleHustle(type) { /* ... existing code ... */ }
+        function handleRest() { /* ... existing code ... */ }
+        function handleStudy() { /* ... existing code ... */ }
+        function calculatePrice(good) { /* ... existing code ... */ }
+        function tradeGood(goodName, action, quantity) { /* ... existing code ... */ }
+        function buyAsset(type, assetName) { /* ... existing code ... */ }
+        function upgradeBusiness(index) { /* ... existing code ... */ }
+        function hireStaff(index) { /* ... existing code ... */ }
+        function calculateBusinessIncome(business) { /* ... existing code ... */ }
+
+        function endDay() {
+            logMessage("A new day dawns.", 'event');
+            player.day += 1;
+            player.energy = player.maxEnergy;
+
+            // Player Income
+            let totalIncome = 0;
+            const propertyIncome = player.assets.properties.reduce((sum, p) => sum + p.income, 0);
+            totalIncome += propertyIncome;
+            let businessIncome = 0;
+            player.assets.businesses.forEach(b => {
+                const incomeRange = calculateBusinessIncome(b);
+                businessIncome += Math.floor(Math.random() * (incomeRange[1] - incomeRange[0] + 1)) + incomeRange[0];
+            });
+            totalIncome += businessIncome;
+            if (totalIncome > 0) player.cash += totalIncome;
+            if (propertyIncome > 0) logMessage(`Collected R${propertyIncome.toLocaleString()} from properties.`, 'success');
+            if (businessIncome > 0) logMessage(`Collected R${businessIncome.toLocaleString()} from businesses.`, 'success');
+            
+            // Rival Growth
+            rivals.forEach(rival => {
+                const dailyGrowth = rival.netWorth * (rival.growthFactor - 1);
+                const randomFactor = (Math.random() * rival.netWorth * 0.01) * (Math.random() > 0.5 ? 1 : -1);
+                rival.netWorth += dailyGrowth + randomFactor;
+            });
+
+            // Market Fluctuation
+            goods.forEach(good => {
+                good.demand += Math.floor((Math.random() - 0.5) * 20);
+                good.supply += Math.floor((Math.random() - 0.5) * 10);
+                if (good.demand < 10) good.demand = 10;
+                if (good.supply < 10) good.supply = 10;
+            });
+            
+            triggerRandomEvent();
+            checkMissions();
+            
+            if (getTotalAssets() >= 100000000) { showWinScreen(); }
+
+            updateHUD();
+            saveGame();
+        }
+        
+        function getTotalAssets() {
+            const propertyValue = player.assets.properties.reduce((sum, p) => sum + p.price, 0);
+            const businessValue = player.assets.businesses.reduce((sum, b) => sum + b.price, 0);
+            return player.cash + propertyValue + businessValue;
+        }
+        
+        // --- EVENT & MISSION SYSTEM ---
+        const missions = { /* ... existing code ... */ };
+        function checkMissions() { /* ... existing code ... */ }
+        const randomEvents = [ /* ... existing code ... */ ];
+        function triggerRandomEvent() { /* ... existing logic ... */ }
+        function handleEventChoice(eventIndex, choiceIndex) { /* ... existing logic ... */ }
+        
+        function showWinScreen() { /* ... existing logic ... */ }
+        
+        function restartGame() {
+            localStorage.removeItem('hustleDynastySave');
+            player = JSON.parse(JSON.stringify(initialPlayerState));
+            rivals = JSON.parse(JSON.stringify(initialRivalsState));
+            districts.forEach((d, index) => d.unlocked = index === 0);
+            document.getElementById('log-content').innerHTML = '';
+            logMessage('Welcome to Hustle Dynasty. A new game has begun.', 'event');
+            updateHUD();
+            closeModal();
+        }
+
+        // --- SAVE/LOAD ---
+        function saveGame() {
+            const gameState = { player: player, districts: districts, rivals: rivals };
+            localStorage.setItem('hustleDynastySave', JSON.stringify(gameState));
+        }
+
+        function loadGame() {
+            const savedState = localStorage.getItem('hustleDynastySave');
+            if (savedState) {
+                const gameState = JSON.parse(savedState);
+                player = gameState.player;
+                rivals = gameState.rivals || JSON.parse(JSON.stringify(initialRivalsState));
+                if (!player.missions) player.missions = {};
+                gameState.districts.forEach((savedDist, index) => { districts[index].unlocked = savedDist.unlocked; });
+                logMessage('Saved game loaded. Welcome back!', 'event');
+            } else {
+                logMessage('Welcome to Hustle Dynasty. You start with R500. It\'s time to build your empire.', 'event');
+            }
+        }
+
+
+        // --- INITIALIZE ---
+        window.onload = () => {
+            loadGame();
+            updateHUD();
+            checkMissions();
+        };
+
+        // --- PASTEBIN ---
+        // Functions below this line are unchanged from previous versions but are required for the game to run.
+        // They are collapsed here for brevity.
+        
+        function showTradeModal() {
+            let goodsHTML = goods.map(good => {
+                const currentPrice = calculatePrice(good);
+                const trend = currentPrice > good.basePrice ? '▲' : '▼';
+                const trendColor = currentPrice > good.basePrice ? 'text-green-400' : 'text-red-400';
+                const owned = player.inventory.find(i => i.name === good.name)?.quantity || 0;
+                return `
+                    <div class="bg-gray-700 p-2 rounded-lg flex justify-between items-center">
+                        <div>
+                            <p>${good.name} <span class="text-xs text-gray-400">(Owned: ${owned})</span></p>
+                            <p class="font-bold">R ${currentPrice.toFixed(2)} <span class="${trendColor}">${trend}</span></p>
+                        </div>
+                        <div class="flex gap-1">
+                            <button onclick="tradeGood('${good.name}', 'buy', 1)" class="bg-green-500 text-xs px-2 py-1 rounded">Buy</button>
+                            <button onclick="tradeGood('${good.name}', 'sell', 1)" class="bg-red-500 text-xs px-2 py-1 rounded">Sell</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const content = `
+                <h3 class="text-xl font-bold mb-4 text-center">Trade Market</h3>
+                <div class="space-y-2 max-h-64 overflow-y-auto">
+                    ${goodsHTML}
+                </div>
+                <button onclick="closeModal()" class="mt-4 w-full bg-red-600 p-2 rounded-lg">Close</button>
+            `;
+            showModal(content);
+        }
+        
+        function showMapModal() {
+            let districtsHTML = districts.map(d => {
+                const unlocked = d.unlocked || player.reputation >= d.reputation;
+                if (!d.unlocked && unlocked) {
+                    d.unlocked = true;
+                    logMessage(`You've gained enough reputation to access ${d.name}!`, 'event');
+                }
+                const lockIcon = unlocked ? '✅' : '🔒';
+                const buttonClass = unlocked ? 'bg-indigo-600' : 'bg-gray-600 cursor-not-allowed';
+                return `<button class="${buttonClass} p-3 rounded-lg text-left" ${unlocked ? `onclick="showDistrictOpportunities('${d.name}')"` : 'disabled'}>${lockIcon} ${d.name} <span class="text-xs text-gray-400">(Req: ${d.reputation} Rep)</span></button>`;
+            }).join('');
+
+            const content = `
+                <h3 class="text-xl font-bold mb-4 text-center">City Map</h3>
+                <div class="grid grid-cols-1 gap-2">
+                    ${districtsHTML}
+                </div>
+                <button onclick="closeModal()" class="mt-4 w-full bg-red-600 p-2 rounded-lg">Close</button>
+            `;
+            showModal(content);
+        }
+
+        function showDistrictOpportunities(districtName) {
+            let propertiesHTML = assets.properties.filter(p => p.district === districtName).map(prop => {
+                 if(player.assets.properties.some(pa => pa.name === prop.name)) return `<div class="bg-green-800 p-3 rounded-lg text-center font-bold">OWNED: ${prop.name}</div>`;
+                 return `
+                     <div class="bg-gray-700 p-3 rounded-lg">
+                        <p class="font-bold">${prop.name}</p>
+                        <p class="text-sm text-green-400">Price: R ${prop.price.toLocaleString()}</p>
+                        <p class="text-xs text-yellow-400">Income: R ${prop.income}/day</p>
+                        <button onclick="buyAsset('property', '${prop.name}')" class="mt-2 w-full bg-blue-600 p-2 rounded-lg">Buy</button>
+                     </div>
+                 `;
+            }).join('');
+
+            let businessesHTML = assets.businesses.filter(b => b.district === districtName).map(biz => {
+                 if(player.assets.businesses.some(ba => ba.name === biz.name)) return `<div class="bg-green-800 p-3 rounded-lg text-center font-bold">OWNED: ${biz.name}</div>`;
+                 return `
+                     <div class="bg-gray-700 p-3 rounded-lg">
+                        <p class="font-bold">${biz.name}</p>
+                        <p class="text-sm text-green-400">Price: R ${biz.price.toLocaleString()}</p>
+                        <p class="text-xs text-yellow-400">Income: R ${biz.baseIncome[0]}-${biz.baseIncome[1]}/day</p>
+                        <button onclick="buyAsset('business', '${biz.name}')" class="mt-2 w-full bg-cyan-600 p-2 rounded-lg">Buy</button>
+                     </div>
+                 `;
+            }).join('');
+
+             const content = `
+                <h3 class="text-xl font-bold mb-4 text-center">${districtName} Opportunities</h3>
+                 <div class="space-y-2 max-h-64 overflow-y-auto">
+                    <h4 class="font-semibold text-gray-400 mt-2">Properties</h4>
+                    ${propertiesHTML.length > 0 ? propertiesHTML : '<p class="text-center text-gray-500">None</p>'}
+                    <h4 class="font-semibold text-gray-400 mt-4">Businesses</h4>
+                    ${businessesHTML.length > 0 ? businessesHTML : '<p class="text-center text-gray-500">None</p>'}
+                </div>
+                <button onclick="showMapModal()" class="mt-4 w-full bg-gray-600 p-2 rounded-lg">Back to Map</button>
+            `;
+            showModal(content);
+        }
+        
+        function showAssetsModal() {
+            const mission = player.missions['cornerStoreKingpin'];
+            let missionHTML = '<h4 class="font-semibold mb-2">Missions</h4>';
+            if (mission && mission.stage > 0) {
+                missionHTML += `<div class="bg-gray-900 p-2 rounded-lg"><p class="text-yellow-400 font-bold">${mission.title}</p><p class="text-sm">${mission.description}</p></div>`;
+            } else {
+                missionHTML += '<p class="text-gray-500">No active missions.</p>';
+            }
+            let propertiesHTML = player.assets.properties.map(p => `<li class="text-green-400">${p.name} (+R ${p.income}/day)</li>`).join('');
+            let businessesHTML = player.assets.businesses.map((b, index) => {
+                const income = calculateBusinessIncome(b);
+                return `<div class="flex justify-between items-center"><li class="text-cyan-400">${b.name} Lvl ${b.level} (+R ${income[0]}-${income[1]}/day)</li><button onclick="showBusinessManagementModal(${index})" class="bg-indigo-600 text-xs px-2 py-1 rounded">Manage</button></div>`;
+            }).join('');
+            let propertyIncome = player.assets.properties.reduce((sum, p) => sum + p.income, 0);
+            const content = `
+                <h3 class="text-xl font-bold mb-4 text-center">Your Assets, Skills & Missions</h3>
+                 <div class="bg-gray-700 p-3 rounded-lg mb-2">${missionHTML}</div>
+                <div class="bg-gray-700 p-3 rounded-lg mb-2">
+                    <h4 class="font-semibold mb-2">Skills</h4>
+                    <p>Haggling Level: <span class="font-bold text-purple-400">${player.skills.haggling}</span> (${(player.skills.haggling * 0.5).toFixed(1)}% price bonus)</p>
+                </div>
+                <div class="bg-gray-700 p-3 rounded-lg">
+                    <h4 class="font-semibold mb-2">Properties</h4>
+                    <ul class="list-disc list-inside space-y-1">${propertiesHTML || '<li>None</li>'}</ul>
+                    <h4 class="font-semibold mb-2 mt-3">Businesses</h4>
+                    <ul class="list-disc list-inside space-y-1">${businessesHTML || '<li>None</li>'}</ul>
+                    <hr class="my-2 border-gray-600">
+                    <p class="font-bold">Total Passive Property Income: <span class="text-yellow-400">R ${propertyIncome}/day</span></p>
+                </div>
+                 <button onclick="closeModal()" class="mt-4 w-full bg-red-600 p-2 rounded-lg">Close</button>
+            `;
+            showModal(content);
+        }
+        
+        function showBusinessManagementModal(businessIndex) {
+            const business = player.assets.businesses[businessIndex];
+            const baseData = assets.businesses.find(b => b.name === business.name);
+            const nextUpgrade = baseData.upgrades[business.level - 1];
+            let upgradeHTML = `<h4 class="font-semibold mb-2">Upgrades</h4>`;
+            if (nextUpgrade) {
+                upgradeHTML += `<p class="mb-2">Next Level: +${((nextUpgrade.multiplier-1)*100).toFixed(0)}% Income</p><button onclick="upgradeBusiness(${businessIndex})" class="w-full action-button bg-green-600 p-2 rounded-lg">Upgrade for R ${nextUpgrade.cost.toLocaleString()}</button>`;
+            } else {
+                upgradeHTML += `<p class="text-gray-400">Max level reached.</p>`;
+            }
+            const staffCost = 200 * business.level;
+            let staffHTML = `<h4 class="font-semibold mt-4 mb-2">Staff (${business.staff} hired)</h4>
+                             <p class="mb-2 text-sm">Each staff member adds a 5% income bonus.</p>
+                             <button onclick="hireStaff(${businessIndex})" class="w-full action-button bg-blue-600 p-2 rounded-lg">Hire Staff for R ${staffCost.toLocaleString()}</button>`;
+            const content = `
+                <h3 class="text-xl font-bold mb-4 text-center">Manage ${business.name}</h3>
+                <div class="bg-gray-700 p-3 rounded-lg mb-2">
+                    ${upgradeHTML}
+                </div>
+                 <div class="bg-gray-700 p-3 rounded-lg">
+                    ${staffHTML}
+                </div>
+                <button onclick="showAssetsModal()" class="mt-4 w-full bg-gray-600 p-2 rounded-lg">Back to Assets</button>
+            `;
+            showModal(content);
+        }
+        function spendEnergy(amount) {
+            if (player.energy >= amount) { player.energy -= amount; updateHUD(); return true; }
+            logMessage("Not enough energy!", 'error');
+            return false;
+        }
+        function handleHustle(type) {
+            const energyCost = type === 'low' ? 10 : 25;
+            if (!spendEnergy(energyCost)) return;
+            if (type === 'low') {
+                const earnings = Math.floor(Math.random() * 50) + 10;
+                player.cash += earnings;
+                player.reputation += 1;
+                logMessage(`You hustled and made R${earnings}.`, 'success');
+            } else {
+                if (Math.random() < 0.6) {
+                    const earnings = Math.floor(Math.random() * 300) + 100;
+                    player.cash += earnings;
+                    player.reputation += 5;
+                    logMessage(`Risky hustle paid off! You made R${earnings}.`, 'success');
+                } else {
+                    const loss = Math.floor(Math.random() * 100) + 20;
+                    player.cash -= loss;
+                    player.reputation -= 2;
+                    logMessage(`The hustle went bad! You lost R${loss}.`, 'error');
+                }
+            }
+            closeModal();
+            updateHUD();
+        }
+        function handleRest() {
+            if(!spendEnergy(5)) return;
+            player.energy = Math.min(player.maxEnergy, player.energy + 50);
+            logMessage("You feel rested and recovered some energy.", 'event');
+            closeModal();
+            updateHUD();
+        }
+        function handleStudy() {
+            const cost = 100 + (player.skills.haggling * 50);
+            if (player.cash < cost) { logMessage("Not enough cash to study.", 'error'); return; }
+            if (!spendEnergy(20)) return;
+            player.cash -= cost;
+            player.skills.haggling++;
+            logMessage(`You improved your Haggling skill to level ${player.skills.haggling}!`, 'success');
+            closeModal();
+            updateHUD();
+        }
+        function calculatePrice(good) {
+            const priceNoise = (Math.random() - 0.5) * 2 * good.volatility;
+            const demandFactor = (good.demand - good.supply) / 100;
+            return good.basePrice * (1 + demandFactor + priceNoise);
+        }
+        function tradeGood(goodName, action, quantity) {
+            const good = goods.find(g => g.name === goodName);
+            let price = calculatePrice(good);
+            let inventoryItem = player.inventory.find(i => i.name === goodName);
+            const hagglingBonus = 1 + (player.skills.haggling * 0.005);
+            if (action === 'buy') {
+                price /= hagglingBonus;
+                if (player.cash >= price * quantity) {
+                    player.cash -= price * quantity;
+                    if (inventoryItem) { inventoryItem.quantity += quantity; } 
+                    else { player.inventory.push({ name: goodName, quantity: quantity }); }
+                    logMessage(`Bought ${quantity} ${goodName} for R${(price * quantity).toFixed(2)}.`, 'success');
+                } else { logMessage("Not enough cash!", 'error'); }
+            } else if (action === 'sell') {
+                price *= hagglingBonus;
+                if (inventoryItem && inventoryItem.quantity >= quantity) {
+                    player.cash += price * quantity;
+                    inventoryItem.quantity -= quantity;
+                    if (inventoryItem.quantity === 0) { player.inventory = player.inventory.filter(i => i.name !== goodName); }
+                    logMessage(`Sold ${quantity} ${goodName} for R${(price * quantity).toFixed(2)}.`, 'success');
+                } else { logMessage("You don't have enough to sell!", 'error'); }
+            }
+            updateHUD();
+            showTradeModal();
+        }
+        function buyAsset(type, assetName) {
+            const assetData = type === 'property' ? assets.properties : assets.businesses;
+            const asset = { ...assetData.find(a => a.name === assetName) };
+            const hagglingBonus = 1 - (player.skills.haggling * 0.005);
+            const finalPrice = asset.price * hagglingBonus;
+            if (player.cash >= finalPrice) {
+                player.cash -= finalPrice;
+                if (type === 'property') { player.assets.properties.push(asset); } 
+                else {
+                    asset.level = 1;
+                    asset.staff = 0;
+                    player.assets.businesses.push(asset);
+                }
+                player.reputation += asset.rep;
+                logMessage(`You bought the ${asset.name}!`, 'success');
+                if (hagglingBonus < 1) logMessage(`Your haggling skill saved you R${(asset.price - finalPrice).toLocaleString()}`, 'success');
+                updateHUD();
+                showDistrictOpportunities(asset.district);
+                checkMissions();
+            } else {
+                logMessage(`You can't afford this. You need R${finalPrice.toLocaleString()}.`, 'error');
+            }
+        }
+        function upgradeBusiness(index) {
+            const business = player.assets.businesses[index];
+            const baseData = assets.businesses.find(b => b.name === business.name);
+            const upgrade = baseData.upgrades[business.level - 1];
+            if (upgrade && player.cash >= upgrade.cost) {
+                player.cash -= upgrade.cost;
+                business.level++;
+                logMessage(`${business.name} upgraded to Level ${business.level}!`, 'success');
+                updateHUD();
+                showBusinessManagementModal(index);
+                checkMissions();
+            } else {
+                logMessage("Cannot afford upgrade.", 'error');
+            }
+        }
+        function hireStaff(index) {
+            const business = player.assets.businesses[index];
+            const cost = 200 * business.level;
+            if (player.cash >= cost) {
+                player.cash -= cost;
+                business.staff++;
+                logMessage(`Hired new staff for ${business.name}.`, 'success');
+                updateHUD();
+                showBusinessManagementModal(index);
+                checkMissions();
+            } else {
+                logMessage("Cannot afford to hire.", 'error');
+            }
+        }
+        function calculateBusinessIncome(business) {
+            const baseData = assets.businesses.find(b => b.name === business.name);
+            let multiplier = 1;
+            for(let i=0; i < business.level - 1; i++) {
+                multiplier *= baseData.upgrades[i].multiplier;
+            }
+            const staffBonus = 1 + (business.staff * 0.05);
+            multiplier *= staffBonus;
+            return [Math.floor(baseData.baseIncome[0] * multiplier), Math.floor(baseData.baseIncome[1] * multiplier)];
+        }
+        const missions = {
+            'cornerStoreKingpin': {
+                stages: {
+                    0: { description: "Mission starts" },
+                    1: { title: "First Step", description: "An old timer told you real money isn't in street hustles, it's in ownership. Buy a Corner Store in The Slums.", condition: () => player.assets.businesses.some(b => b.name === 'Corner Store') },
+                    2: { title: "Staffing Up", description: "The store is running, but you're stretched thin. Hire at least one staff member to help out.", condition: () => player.assets.businesses.find(b => b.name === 'Corner Store')?.staff >= 1 },
+                    3: { title: "Expansion", description: "Business is good. Time to expand. Upgrade your Corner Store to Level 2.", condition: () => player.assets.businesses.find(b => b.name === 'Corner Store')?.level >= 2 },
+                    4: { title: "Mission Complete", description: "You've established your first real business. This is just the beginning.", isEnd: true, reward: {cash: 5000, rep: 50} }
+                }
+            }
+        };
+        function checkMissions() {
+            if (player.day >= 3 && !player.missions['cornerStoreKingpin']) {
+                player.missions['cornerStoreKingpin'] = { stage: 1, ...missions['cornerStoreKingpin'].stages[1] };
+                logMessage("MISSION: An old timer gives you a tip: 'Real money is in ownership, not hustles.' He suggests you buy a Corner Store.", 'mission');
+            }
+            for (const missionKey in player.missions) {
+                const playerMission = player.missions[missionKey];
+                if (playerMission.stage > 0) {
+                    const missionData = missions[missionKey];
+                    const currentStage = missionData.stages[playerMission.stage];
+                    if (currentStage.condition && currentStage.condition()) {
+                        playerMission.stage++;
+                        const nextStage = missionData.stages[playerMission.stage];
+                        playerMission.title = nextStage.title;
+                        playerMission.description = nextStage.description;
+                        logMessage(`MISSION UPDATE: ${nextStage.title} - ${nextStage.description}`, 'mission');
+                        if (nextStage.isEnd) {
+                            player.cash += nextStage.reward.cash;
+                            player.reputation += nextStage.reward.rep;
+                            logMessage(`MISSION COMPLETE! You earned R${nextStage.reward.cash} and ${nextStage.reward.rep} Rep.`, 'success');
+                            playerMission.stage = 0; // Deactivate
+                        }
+                    }
+                }
+            }
+            updateHUD();
+        }
+        const randomEvents = [ ];
+        function triggerRandomEvent() { }
+        function handleEventChoice(eventIndex, choiceIndex) { }
+        function showWinScreen() { 
+            const content = `
+                <h3 class="text-2xl font-bold mb-4 text-center text-green-400">DYNASTY ESTABLISHED!</h3>
+                <p class="text-center">You've reached over R100,000,000 in assets and control the city.</p>
+                <p class="text-center mt-4">Your legacy is secure. You are the head of the Hustle Dynasty.</p>
+                <p class="text-center font-bold mt-2">Final Stats:</p>
+                <ul class="text-center">
+                    <li>Days Taken: ${player.day}</li>
+                    <li>Final Net Worth: R ${getTotalAssets().toLocaleString()}</li>
+                </ul>
+                 <button onclick="restartGame()" class="mt-4 w-full bg-indigo-600 p-2 rounded-lg">Play Again</button>
+            `;
+            showModal(content);
+        }
+    </script>
+</body>
+</html>
+
